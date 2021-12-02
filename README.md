@@ -1,6 +1,6 @@
 # AML Command Transfer (ACT)
 
-ACT is a lightweight tool to transfor any command from the local machine to AML or
+ACT is a lightweight tool to transfer any command from the local machine to AML or
 ITP, both of which are Azure Machine Learning services.
 
 ## Installation
