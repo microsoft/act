@@ -119,7 +119,7 @@ ITP, both of which are Azure Machine Learning services.
    alis a='python -m act.aml_client '
    ```
 
-## Job Management
+## Job/Data Management
 1. How to query the job status
    ```bash
    # the last parameter is the run id
@@ -201,7 +201,75 @@ ITP, both of which are Azure Machine Learning services.
        - highly recommended for distributed training/inference
    - If `multi_process=false`, effectively it runs `mpirun --hostfile hostfile_contain_N_node_ips --npernode 1 cmd`
        - still, the number of nodes x gpu_per_node == the number of gpu requested
+   - The rank needs to be figured out in the code generally. Internally, the
+     service leverages the mpirun to launch the code. The rank or local rank
+     can be figured out through mpirun-specific environment parameters.
+     Sometimes, we also need to know the master node's IP, which can be figured
+     out through
+     ```python
+     if 'AZ_BATCH_HOST_LIST' in os.environ:
+         return get_aml_mpi_host_names()[0]
+     elif 'AZ_BATCHAI_JOB_MASTER_NODE_IP' in os.environ:
+         return os.environ['AZ_BATCHAI_JOB_MASTER_NODE_IP']
+     ```
+     There might be other variables as well to find the IP, but we will not
+     list all of them here.
 
+5. How to switch among multiple clusters
+  For each cluster, it is recommended to have different configuration file. For
+  example, we have two clusters: c1 and c2. Then, the two configuration files
+  should be aux_data/aml/c1.yaml and aux_data/aml/c2.yaml. In this case, we can
+  switch different clusters by the option of -c, e.g.
+  ```bash
+  a -c c1 submit ls
+  a -c c2 submit nvidia-smi
+  ```
+
+6. Data management (optional)
+
+   In the config file, we have a mapping of the local folder and the folder in
+   the azure blob. Thus, we can upload and download the data based on this
+   mapping. If the local folder is also a blobfuse folder, then there is no need
+   to upload/download. Here, we mainly focus on the scenario where the local
+   folder is not a blob fuse folder. Let's say the local folder name is `data`
+   and we have an entry of `data_folder` in the config, which tells the data
+   folder will be a blobfuse folder in AML env.
+   - list the files starting with some prefix
+     ```
+     a ls data/voc20
+     ```
+     Note, the prefix here is `data/voc20`, which means we should have a
+     definition of `data_folder` in the configuration
+   - upload local file/folder of `data/voc20` to azure blob
+     ```
+     a u data/voc20
+     ```
+   - download the file/folder of `data/coco` from blob to local folder
+     ```
+     a d data/coco
+     ```
+     Note
+     -  `u` means upload; `d` means download
+     - it will automatically identify if it is a file or folder. Thus, there is no
+       need to specify special parameters here.
+   - delete a file or folder in the blob defined by the clsuter config
+     ```
+     a rm data/coco
+     ```
+     Be careful as you can not revert
+     this operation or cannot recover the data if the deletion is a mistake.
+   - transfer the file or folder between two blobs
+     ```
+     a -c eu -f we3v32 u data/voc20
+     ```
+     Here, `-c` means current cluster name. In this case, it will by default
+     find the config through `aux_data/aml/eu.yaml`. `-f` means `from cluster`,
+     which means the data source. Each cluster has a definition of the blob
+     information. Thus, this tool can figure out all details to transfer the
+     data from another cluster's setting to this cluster's blob setting. It
+     will also automatically detect whether to take it like a folder or a file.
+   
+   
 
 ## Contributing
 
