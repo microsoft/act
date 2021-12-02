@@ -12,7 +12,7 @@ ITP, both of which are Azure Machine Learning services.
    * or, install by downloading the source code explicitly
      ```bash
      git clone https://github.com/microsoft/act.git
-     cd src
+     cd act
      python setup.py build develop
      ```
 
