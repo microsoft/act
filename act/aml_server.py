@@ -24,11 +24,12 @@ def init_logging():
     )
 
 def unzip(zip_file, target_folder):
-    # the linux command of unzip preserves teh time stamp, which would be
-    # helpful to reduce the time cost of compiling
+    if zip_file.startswith('http'):
+        local_zip = '/tmp/code.zip'
+        cmd_run(['rm', '-rf', local_zip])
+        cmd_run(['wget', zip_file, '-O', local_zip])
+        zip_file = local_zip
     cmd_run(['unzip', zip_file, '-d', target_folder])
-    #zip_ref = zipfile.ZipFile(zip_file, 'r')
-    #zip_ref.extractall(path=target_folder)
 
 def cmd_run(cmd, working_directory='./', succeed=False,
         return_output=False, stdout=None, stderr=None):
@@ -317,7 +318,7 @@ def run():
     for k in os.environ:
         logging.info('{} = {}'.format(k, os.environ[k]))
 
-    qd_root = op.join('/tmp', 'code', 'quickdetection')
+    qd_root = op.join('/tmp', 'code', 'act')
 
     wrap_all(dict_param['code_path'],
              qd_root,

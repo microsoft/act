@@ -747,11 +747,8 @@ class AMLClient(object):
         self.attach_data_store()
         self.attach_mount_point()
 
-        use_scrip_run_config = True
-        if use_scrip_run_config:
-            script_params = {'--' + p: str(v['mount_point']) for p, v in self.config_param.items()}
-        else:
-            script_params = {'--' + p: v['mount_point'] for p, v in self.config_param.items()}
+        script_params = {'--' + p: str(v['mount_point']) if not v.get('submit_with_url') else v['cloud_blob'].get_url(v['path'])
+                         for p, v in self.config_param.items()}
         script_params['--command'] = cmd if isinstance(cmd, str) else ' '.join(cmd)
         if self.sleep_if_fail:
             script_params['--sleep_if_fail'] = '1'
@@ -803,35 +800,23 @@ class AMLClient(object):
             else:
                 mpi_config.process_count_per_node = 1
 
-        if use_scrip_run_config:
-            if mpi_config:
-                mpi_config.node_count = node_count
+        if mpi_config:
+            mpi_config.node_count = node_count
         if num_gpu == 0:
             mpi_config = None
 
         if self.use_custom_docker:
-            if use_scrip_run_config:
-                from azureml.core import ScriptRunConfig
-                estimator10 = ScriptRunConfig(
-                    source_directory=self.source_directory,
-                    script=self.entry_script,
-                    arguments=[x for kv in script_params.items() for x in kv],
-                    compute_target=self.compute_target,
-                    environment=env,
-                    distributed_job_config=mpi_config,
-                )
-                estimator10.run_config.data_references = dict((v['mount_point'].data_reference_name, v['mount_point'].to_config()) for v in
-                     self.config_param.values())
-            else:
-                estimator10 = Estimator(
-                    source_directory=self.source_directory,
-                    compute_target=self.compute_target,
-                    script_params=script_params,
-                    entry_script=self.entry_script,
-                    environment_definition=env,
-                    node_count=node_count,
-                    distributed_training=mpi_config,
-                )
+            from azureml.core import ScriptRunConfig
+            estimator10 = ScriptRunConfig(
+                source_directory=self.source_directory,
+                script=self.entry_script,
+                arguments=[x for kv in script_params.items() for x in kv],
+                compute_target=self.compute_target,
+                environment=env,
+                distributed_job_config=mpi_config,
+            )
+            estimator10.run_config.data_references = dict((v['mount_point'].data_reference_name, v['mount_point'].to_config()) for v in
+                 self.config_param.values())
         else:
             estimator10 = PyTorch(
                 source_directory=self.source_directory,
