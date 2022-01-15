@@ -23,13 +23,20 @@ def init_logging():
         datefmt='%m-%d %H:%M:%S',
     )
 
+def copy_file(src, dest):
+    tmp = dest + '.tmp'
+    # we use rsync because it could output the progress
+    cmd_run('rsync {} {} --progress'.format(src, tmp).split(' '))
+    os.rename(tmp, dest)
+
 def unzip(zip_file, target_folder):
+    local_zip = '/tmp/code.zip'
     if zip_file.startswith('http'):
-        local_zip = '/tmp/code.zip'
         cmd_run(['rm', '-rf', local_zip])
         cmd_run(['wget', zip_file, '-O', local_zip])
-        zip_file = local_zip
-    cmd_run(['unzip', zip_file, '-d', target_folder])
+    else:
+        copy_file(zip_file, local_zip)
+    cmd_run(['unzip', local_zip, '-d', target_folder])
 
 def cmd_run(cmd, working_directory='./', succeed=False,
         return_output=False, stdout=None, stderr=None):
