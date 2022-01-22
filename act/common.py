@@ -8,7 +8,19 @@ import shutil
 import subprocess as sp
 import psutil
 from pprint import pformat
+import sys
 
+
+def init_logging():
+    ch = logging.StreamHandler(stream=sys.stdout)
+    ch.setLevel(logging.INFO)
+    logger_fmt = logging.Formatter('%(asctime)s.%(msecs)03d %(process)d:%(filename)s:%(lineno)s %(funcName)10s(): %(message)s')
+    ch.setFormatter(logger_fmt)
+
+    root = logging.getLogger()
+    root.handlers = []
+    root.addHandler(ch)
+    root.setLevel(logging.INFO)
 
 def dict_has_path(d, p, with_type=False):
     ps = p.split('$')
@@ -76,6 +88,43 @@ def acquireLock(lock_f='/tmp/lockfile.LOCK'):
     locked_file_descriptor = open(lock_f, 'w+')
     fcntl.lockf(locked_file_descriptor, fcntl.LOCK_EX)
     return locked_file_descriptor
+
+def get_table_print_lines(a_to_bs, all_key):
+    if len(a_to_bs) == 0:
+        logging.info('no rows')
+        return []
+    if not all_key:
+        all_key = []
+        for a_to_b in a_to_bs:
+            all_key.extend(a_to_b.keys())
+        all_key = sorted(list(set(all_key)))
+    all_width = [max([len(str(a_to_b.get(k, ''))) for a_to_b in a_to_bs] +
+        [len(k)]) for k in all_key]
+    row_format = ' '.join(['{{:{}}}'.format(w) for w in all_width])
+
+    all_line = []
+    line = row_format.format(*all_key)
+    all_line.append(line.strip())
+    for a_to_b in a_to_bs:
+        line = row_format.format(*[str(a_to_b.get(k, '')) for k in all_key])
+        all_line.append(line)
+    return all_line
+
+def print_table(a_to_bs, all_key=None, latex=False, **kwargs):
+    if len(a_to_bs) == 0:
+        return
+    if not latex:
+        all_line = get_table_print_lines(a_to_bs, all_key)
+        logging.info('\n{}'.format('\n'.join(all_line)))
+    else:
+        from qd.latex_writer import print_simple_latex_table
+        if all_key is None:
+            all_key = list(set(a for a_to_b in a_to_bs for a in a_to_b))
+            all_key = sorted(all_key)
+        x = print_simple_latex_table(a_to_bs,
+                all_key, **kwargs)
+        logging.info('\n{}'.format(x))
+        return x
 
 def hash_sha1(s):
     import hashlib

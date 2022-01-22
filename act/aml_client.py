@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-from qd.qd_common import hash_sha1
 import os.path as op
 from pprint import pformat
 import logging
 import os
 
-from qd.qd_common import print_table
+from .common import print_table
 from deprecated import deprecated
+from .common import hash_sha1
 from .common import load_from_yaml_file, dict_update_nested_dict
 from .common import cmd_run
 from .common import decode_general_cmd
@@ -25,21 +25,13 @@ def create_aml_client(**kwargs):
     if 'cluster' in kwargs:
         cluster = kwargs['cluster']
         path = op.join('aux_data', 'aml', '{}.yaml'.format(cluster))
-        last_config = './aux_data/aml/aml.yaml'
-        if not op.exists(last_config) or op.islink(last_config):
-            from qd.qd_common import try_delete
-            try_delete(last_config)
-            # next time, we don't have to specify teh parameter of cluster
-            # since this one will be the default one.
-            os.symlink(op.relpath(path, op.dirname(last_config)),
-                    last_config)
     else:
         path = os.environ.get('AML_CONFIG_PATH', './aux_data/aml/aml.yaml')
         kwargs['cluster'] = op.splitext(op.basename(op.realpath(path)))[0]
     param = load_from_yaml_file(path)
     dict_update_nested_dict(param, kwargs)
     if param.get('is_ssh_scheduler'):
-        from .ssh_job_scheduler_client import SSHJobSchedulerClient
+        from qd.gpucluster.ssh_job_scheduler_client import SSHJobSchedulerClient
         return SSHJobSchedulerClient(**param)
     else:
         return AMLClient(**param)
@@ -1178,6 +1170,10 @@ def detect_aml_error_message(app_id):
                 if 'ZeroDivisionError: float division by zero' in line:
                     if i > 0 and '1./scale' in all_line[i - 1]:
                         error_codes.add('ScaleNaN')
+                if 'Internal Server Error for url: https://huggingface.co' in line:
+                    error_codes.add('HuggingFaceConnect')
+                if 'Attempted loss scale: 1, reducing to 1' in line:
+                    error_codes.add('DSNaN')
             # check how many gpus by nvidia-smi
             import re
             num_gpu = len([line for line in all_line if re.match('.*N/A.*Default', line) is
@@ -1467,7 +1463,7 @@ def parse_args():
     return parser.parse_args()
 
 if __name__ == '__main__':
-    from qd.qd_common import init_logging
+    from .common import init_logging
     init_logging()
     args = parse_args()
     param = vars(args)

@@ -4,17 +4,15 @@ ACT is a lightweight tool to transfer any command from the local machine to AML 
 ITP, both of which are Azure Machine Learning services.
 
 ## Installation
-1. Download and install the source code
-   * install with pip
-     ```bash
-     pip install "git+https://github.com/microsoft/act.git"
-     ```
-   * or, install by downloading the source code explicitly
-     ```bash
-     git clone https://github.com/microsoft/act.git
-     cd act
-     python setup.py build develop
-     ```
+1. install
+   ```bash
+   pip install --upgrade azureml-sdk
+   pip install --upgrade --disable-pip-version-check --extra-index-url https://azuremlsdktestpypi.azureedge.net/K8s-Compute/D58E86006C65 azureml_contrib_k8s
+   git clone https://github.com/microsoft/act.git
+   cd act
+   pip install -r requirements.txt
+   python setup.py build develop
+   ```
 
 2. Setup azcopy
 
