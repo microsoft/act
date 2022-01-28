@@ -128,7 +128,7 @@ def parse_run_info(run, with_details=True,
     logging.info(info['portal_url'])
 
     param_keys = ['data', 'net', 'expid', 'full_expid']
-    from qd.qd_common import get_all_path
+    from .common import get_all_path
     all_path = get_all_path(info)
     for k in param_keys:
         ps = [p for p in all_path if p.endswith('${}'.format(k))]
@@ -150,7 +150,7 @@ def create_aml_run(experiment, run_id):
         # sometimes, AML will return two runs with the same ID. it is quite
         # strange. Here, we deduplicate the runs by the id
         id_runs = [(r.id, r) for r in matched_runs]
-        from qd.qd_common import list_to_dict
+        from .common import list_to_dict
         id_to_runs = list_to_dict(id_runs, 0)
         matched_runs = [runs[0] for _, runs in id_to_runs.items()]
         assert len(matched_runs) == 1, ', '.join([r.id for r in
@@ -174,7 +174,7 @@ def download_run_logs(run_info, full=True):
         kvs = [(x['name'], x['url']) for x in run_info['logFiles']]
     for k, v in kvs:
         target_file = op.join(log_folder, run_info['appID'], k)
-        from qd.qd_common import url_to_file_by_curl
+        from .common import url_to_file_by_curl
         try:
             url_fsize = get_url_fsize(v)
         except:
@@ -213,7 +213,7 @@ def download_run_logs(run_info, full=True):
 
     log_status = {'status': run_info['status'],
                   'is_full': full}
-    from qd.qd_common import write_to_yaml_file
+    from .common import write_to_yaml_file
     write_to_yaml_file(log_status, log_status_file)
 
     return all_log_file
@@ -322,7 +322,7 @@ class AMLClient(object):
         self.entry_script = entry_script
         # it does not matter what the name is
         if 'experiment_name' not in kwargs:
-            from qd.qd_common import get_user_name
+            from .common import get_user_name
             self.experiment_name = get_user_name()
         else:
             self.experiment_name = kwargs['experiment_name']
@@ -554,7 +554,7 @@ class AMLClient(object):
             for info in all_info:
                 # used for injecting to db
                 info['cluster'] = self.cluster
-            from qd.qd_common import print_job_infos
+            from .common import print_job_infos
             print_job_infos(all_info)
             return all_info
         else:
@@ -622,14 +622,6 @@ class AMLClient(object):
         return self.config_param['data_folder']['cloud_blob'].exists(
                 op.join(self.config_param['data_folder']['path'],
                 fname))
-
-    @deprecated('use self.upload()')
-    def upload_qd_data(self, d):
-        self.attach_data_store()
-        from qd.tsv_io import TSVDataset
-        data_root = TSVDataset(d)._data_root
-        self.config_param['data_folder']['cloud_blob'].az_sync(data_root,
-                op.join(self.config_param['data_folder']['path'], d))
 
     def sync_full_expid_from_local(self, full_expid):
         cloud = self.config_param['output_folder']['cloud_blob']
@@ -853,42 +845,42 @@ class AMLClient(object):
         logging.info('job id = {}, cmd = \n{}'.format(r.id, cmd))
         return r.id
 
-    def inject(self, run_id=None):
-        all_info = self.query(run_id, max_runs=5000)
-        from qd.db import update_cluster_job_db
+    #def inject(self, run_id=None):
+        #all_info = self.query(run_id, max_runs=5000)
+        #from qd.db import update_cluster_job_db
 
-        collection_name = self.kwargs.get('inject_collection', 'phillyjob')
-        failed_jobs = [info for info in all_info if info['status'] == self.status_failed]
-        failed_job_ids = [info['appID'] for info in failed_jobs]
-        from qd.db import create_annotation_db
-        c = create_annotation_db()
-        appID_to_failed_job = {info['appID']: info for info in failed_jobs}
-        for job_in_db in c.iter_general(collection_name,
-                **{'appID': {'$in': failed_job_ids}}):
-            if job_in_db['status'] == self.status_failed:
-                del appID_to_failed_job[job_in_db['appID']]
-        for _, info in appID_to_failed_job.items():
-            info.update(self.query(info['appID'], with_log=True)[0])
+        #collection_name = self.kwargs.get('inject_collection', 'phillyjob')
+        #failed_jobs = [info for info in all_info if info['status'] == self.status_failed]
+        #failed_job_ids = [info['appID'] for info in failed_jobs]
+        #from qd.db import create_annotation_db
+        #c = create_annotation_db()
+        #appID_to_failed_job = {info['appID']: info for info in failed_jobs}
+        #for job_in_db in c.iter_general(collection_name,
+                #**{'appID': {'$in': failed_job_ids}}):
+            #if job_in_db['status'] == self.status_failed:
+                #del appID_to_failed_job[job_in_db['appID']]
+        #for _, info in appID_to_failed_job.items():
+            #info.update(self.query(info['appID'], with_log=True)[0])
 
-        update_cluster_job_db(all_info,
-                collection_name=collection_name)
+        #update_cluster_job_db(all_info,
+                #collection_name=collection_name)
 
     def sync_code(self, random_id, compile_in_docker=False, clean=True):
         assert random_id == ''
         import os.path as op
         random_qd = op.basename(self.config_param['code_path']['path'])
-        from qd.qd_common import get_user_name
+        from .common import get_user_name
         random_abs_qd = op.join('/tmp', get_user_name(),
                 '{}.zip'.format(random_qd))
         if op.isfile(random_abs_qd) and clean:
             os.remove(random_abs_qd)
         logging.info('{}'.format(random_qd))
-        from qd.qd_common import zip_qd
+        from .common import zip_qd
         # zip it
         zip_qd(random_abs_qd, self.zip_options)
 
         if compile_in_docker:
-            from qd.qd_common import compile_by_docker
+            from .common import compile_by_docker
             compile_by_docker(random_abs_qd, self.docker['image'],
                     random_abs_qd)
 
@@ -915,7 +907,7 @@ class AMLClient(object):
         infos = self.config_param[key]['cloud_blob'].list_blob_info(path_in_blob)
         for i in infos:
             i['name'] = i['name'][len(path_in_blob):]
-        from qd.qd_common import natural_sort
+        from .common import natural_sort
         natural_sort(infos, key=lambda i: i['name'])
         return infos
 
@@ -997,22 +989,22 @@ class AMLClient(object):
             #tmp_first=False
         )
 
-    def download_latest_qdoutput(self, full_expid):
-        src_path = op.join(self.config_param['output_folder']['path'],
-                full_expid)
-        target_folder = op.join('output', full_expid)
+    #def download_latest_qdoutput(self, full_expid):
+        #src_path = op.join(self.config_param['output_folder']['path'],
+                #full_expid)
+        #target_folder = op.join('output', full_expid)
 
-        ignore_base_fname_patterns = 'aux_data/cron_jobs/ignore_download_pattern.txt'
-        if op.isfile(ignore_base_fname_patterns):
-            from qd.qd_common import load_list_file
-            ignore_base_fname_patterns = load_list_file(ignore_base_fname_patterns)
-        else:
-            ignore_base_fname_patterns = None
-        self.config_param['output_folder']['cloud_blob'].blob_download_qdoutput(
-            src_path,
-            target_folder,
-            ignore_base_fname_patterns=ignore_base_fname_patterns,
-        )
+        #ignore_base_fname_patterns = 'aux_data/cron_jobs/ignore_download_pattern.txt'
+        #if op.isfile(ignore_base_fname_patterns):
+            #from qd.qd_common import load_list_file
+            #ignore_base_fname_patterns = load_list_file(ignore_base_fname_patterns)
+        #else:
+            #ignore_base_fname_patterns = None
+        #self.config_param['output_folder']['cloud_blob'].blob_download_qdoutput(
+            #src_path,
+            #target_folder,
+            #ignore_base_fname_patterns=ignore_base_fname_patterns,
+        #)
 
 def inject_to_tensorboard(info):
     log_folder = 'output/tensorboard/aml'
@@ -1059,7 +1051,7 @@ def detect_aml_error_message(app_id):
     for r, _, files in os.walk(folder):
         for f in files:
             log_file = op.join(r, f)
-            from qd.qd_common import decode_to_str
+            from .common import decode_to_str
             all_line = decode_to_str(read_to_buffer(log_file)).split('\n')
             for i, line in enumerate(all_line):
                 if 'unzip:  cannot find or open' in line:
@@ -1185,48 +1177,48 @@ def detect_aml_error_message(app_id):
     return list(error_codes)
 
 
-def monitor():
-    from qd.db import create_annotation_db
-    c = create_annotation_db()
-    cluster_to_client = {}
-    dbjob_client_jobinfo = []
-    for row in c.iter_general('ongoingjob'):
-        if 'job_id' in row:
-            appID = row['job_id']
-        else:
-            appID = row['appID']
-        cluster = row['cluster']
-        if cluster not in cluster_to_client:
-            client = create_aml_client(cluster=cluster,
-                    with_log=False)
-            cluster_to_client[cluster] = client
-        client = cluster_to_client[cluster]
-        job_info = client.query(appID)[0]
-        dbjob_client_jobinfo.append((row, client, job_info))
+#def monitor():
+    #from qd.db import create_annotation_db
+    #c = create_annotation_db()
+    #cluster_to_client = {}
+    #dbjob_client_jobinfo = []
+    #for row in c.iter_general('ongoingjob'):
+        #if 'job_id' in row:
+            #appID = row['job_id']
+        #else:
+            #appID = row['appID']
+        #cluster = row['cluster']
+        #if cluster not in cluster_to_client:
+            #client = create_aml_client(cluster=cluster,
+                    #with_log=False)
+            #cluster_to_client[cluster] = client
+        #client = cluster_to_client[cluster]
+        #job_info = client.query(appID)[0]
+        #dbjob_client_jobinfo.append((row, client, job_info))
 
-    # update status
-    for row, client, job_info in dbjob_client_jobinfo:
-        c.update_many('ongoingjob', {'_id': row['_id']},
-                {'$set': {'status': job_info['status'],
-                          'portal_url': job_info['portal_url']}})
+    ## update status
+    #for row, client, job_info in dbjob_client_jobinfo:
+        #c.update_many('ongoingjob', {'_id': row['_id']},
+                #{'$set': {'status': job_info['status'],
+                          #'portal_url': job_info['portal_url']}})
 
-    for row, client, job_info in dbjob_client_jobinfo:
-        if job_info['status'] in [client.status_completed,
-                client.status_canceled]:
-            logging.info('removing _id = {}'.format(row['_id']))
-            c.delete_many('ongoingjob', _id=row['_id'])
-        elif job_info['status'] == client.status_failed:
-            logging.info('resubmitting {}'.format(job_info['appID']))
-            new_appID = client.resubmit(job_info['appID'])
-            retried = row.get('retry', 0) + 1
-            history = row.get('history', [])
-            history.append(job_info['appID'])
-            c.update_many('ongoingjob', {'_id': row['_id']},
-                          {'$set': {'appID': new_appID,
-                                    'status': client.status_queued,
-                                    'history': history,
-                                    'retried': retried},
-                           '$unset': {'portal_url': ''}})
+    #for row, client, job_info in dbjob_client_jobinfo:
+        #if job_info['status'] in [client.status_completed,
+                #client.status_canceled]:
+            #logging.info('removing _id = {}'.format(row['_id']))
+            #c.delete_many('ongoingjob', _id=row['_id'])
+        #elif job_info['status'] == client.status_failed:
+            #logging.info('resubmitting {}'.format(job_info['appID']))
+            #new_appID = client.resubmit(job_info['appID'])
+            #retried = row.get('retry', 0) + 1
+            #history = row.get('history', [])
+            #history.append(job_info['appID'])
+            #c.update_many('ongoingjob', {'_id': row['_id']},
+                          #{'$set': {'appID': new_appID,
+                                    #'status': client.status_queued,
+                                    #'history': history,
+                                    #'retried': retried},
+                           #'$unset': {'portal_url': ''}})
 
 # some user might not use the mongodb and we will not crash here
 @try_once
@@ -1292,7 +1284,7 @@ def execute(task_type, **kwargs):
                 with_details=kwargs.get('with_details', True),
                 detect_error_if_failed=True,
             ))
-            from qd.qd_common import print_job_infos
+            from .common import print_job_infos
             print_job_infos(all_info)
         else:
             c = create_aml_client(**kwargs)
@@ -1305,7 +1297,7 @@ def execute(task_type, **kwargs):
         c.query(by_status=AMLClient.status_queued)
     elif task_type in ['ssh']:
         assert len(kwargs['remainders']) == 1
-        c = MultiAMLClient(**kwargs)
+        c = create_aml_client(**kwargs)
         c.ssh(partial_id=kwargs['remainders'][0])
     elif task_type in ['qr']:
         c = create_aml_client(**kwargs)
@@ -1330,7 +1322,7 @@ def execute(task_type, **kwargs):
         cmd = ' '.join(params)
         c.local_run(cmd)
     elif task_type in ['a', 'abort']:
-        c = MultiAMLClient(**kwargs)
+        c = create_aml_client(**kwargs)
         for v in kwargs['remainders']:
             v = v.strip('/')
             c.abort(v)
@@ -1338,10 +1330,10 @@ def execute(task_type, **kwargs):
         c = create_aml_client(**kwargs)
         for full_expid in kwargs['remainders']:
             c.download(full_expid)
-    elif task_type in ['do']:
-        c = create_aml_client(**kwargs)
-        for full_expid in kwargs['remainders']:
-            c.download_latest_qdoutput(full_expid)
+    #elif task_type in ['do']:
+        #c = create_aml_client(**kwargs)
+        #for full_expid in kwargs['remainders']:
+            #c.download_latest_qdoutput(full_expid)
     elif task_type in ['upload', 'u']:
         if not kwargs.get('from_cluster'):
             c = create_aml_client(**kwargs)
@@ -1399,16 +1391,16 @@ def execute(task_type, **kwargs):
         m = create_aml_client(**kwargs)
         info = m.get_cluster_status()
         logging.info(pformat(info))
-    elif task_type in ['monitor']:
-        monitor()
-    elif task_type in ['i', 'inject']:
-        run_ids = kwargs.get('remainders', [])
-        m = create_aml_client(**kwargs)
-        if len(run_ids) == 0:
-            m.inject()
-        else:
-            for run_id in run_ids:
-                m.inject(run_id)
+    #elif task_type in ['monitor']:
+        #monitor()
+    #elif task_type in ['i', 'inject']:
+        #run_ids = kwargs.get('remainders', [])
+        #m = create_aml_client(**kwargs)
+        #if len(run_ids) == 0:
+            #m.inject()
+        #else:
+            #for run_id in run_ids:
+                #m.inject(run_id)
     elif task_type in ['parse']:
         codes = detect_aml_error_message(kwargs.get('remainders')[0])
         logging.info('error code = {}'.format(', '.join(codes)))
@@ -1426,8 +1418,8 @@ def parse_args():
                                  'qr', # query running jobs
                                  'd', 'download',
                                  'u', 'upload',
-                                 'do',
-                                 'monitor',
+                                 #'do',
+                                 #'monitor',
                                  'parse',
                                  'init',
                                  'initc', # init with compile
@@ -1436,7 +1428,9 @@ def parse_args():
                                  'blame', 'resubmit',
                                  'ls', 'rm',
                                  'url',
-                                 's', 'summary', 'i', 'inject'])
+                                 's', 'summary',
+                                 #'i', 'inject',
+                                 ])
     parser.add_argument('-no-wl', dest='with_log', action='store_false')
     parser.add_argument('-no-dt', dest='with_details', action='store_false')
     parser.add_argument('-no-lf', dest='log_full', action='store_false')

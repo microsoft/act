@@ -9,7 +9,218 @@ import subprocess as sp
 import psutil
 from pprint import pformat
 import sys
+from collections import OrderedDict
 
+
+def write_to_yaml_file(context, file_name):
+    ensure_directory(op.dirname(file_name))
+    with open(file_name, 'w') as fp:
+        yaml.dump(context, fp, default_flow_style=False,
+                encoding='utf-8', allow_unicode=True)
+
+def url_to_file_by_curl(url, fname, bytes_start=None, bytes_end=None):
+    ensure_directory(op.dirname(fname))
+    if bytes_start == 0 and bytes_end == 0:
+        cmd_run(['touch', fname])
+        return
+    if bytes_start is None:
+        bytes_start = 0
+    elif bytes_start < 0:
+        size = get_url_fsize(url)
+        bytes_start = size + bytes_start
+        if bytes_start < 0:
+            bytes_start = 0
+    if bytes_end is None:
+        # -f: if it fails, no output will be sent to output file
+        if bytes_start == 0:
+            cmd_run(['curl', '-f',
+                url, '--output', fname])
+        else:
+            cmd_run(['curl', '-f', '-r', '{}-'.format(bytes_start),
+                url, '--output', fname])
+    else:
+        # curl: end is inclusive
+        cmd_run(['curl', '-f', '-r', '{}-{}'.format(bytes_start, bytes_end - 1),
+            url, '--output', fname])
+
+def list_to_dict(l, idx, keep_one=False):
+    result = OrderedDict()
+    for x in l:
+        if x[idx] not in result:
+            result[x[idx]] = []
+        y = x[:idx] + x[idx + 1:]
+        if not keep_one and len(y) == 1:
+            y = y[0]
+        result[x[idx]].append(y)
+    return result
+
+def print_job_infos(all_job_info):
+    all_key = [
+        'cluster',
+        'status',
+        'appID-s',
+        'result',
+        'elapsedTime',
+        'elapsedFinished',
+        'mem_used',
+        'gpu_util',
+        'speed',
+        'left']
+    keys = ['data', 'net', 'expid']
+    meta_keys = ['num_gpu']
+    all_key.extend(keys)
+    all_key.extend(meta_keys)
+
+    # find the keys whose values are the same
+    def all_equal(x):
+        assert len(x) > 0
+        return all(y == x[0] for y in x[1:])
+
+    if len(all_job_info) > 1:
+        equal_keys = [k for k in all_key if all_equal([j.get(k) for j in all_job_info])]
+        if len(equal_keys) > 0:
+            logging.info('equal key values for all jobs')
+            print_table(all_job_info[0:1], all_key=equal_keys)
+        all_key = [k for k in all_key if not all_equal([j.get(k) for j in all_job_info])]
+
+    print_table(all_job_info, all_key=all_key)
+
+def copy_file(src, dest):
+    tmp = dest + '.tmp'
+    # we use rsync because it could output the progress
+    cmd_run('rsync {} {} --progress'.format(src, tmp).split(' '))
+    os.rename(tmp, dest)
+
+def natural_key(text):
+    import re
+    result = []
+    for c in re.split(r'([0-9]+(?:[.][0-9]*)?)', text):
+        try:
+            result.append(float(c))
+        except:
+            continue
+    return result
+
+def natural_sort(strs, key=None):
+    if key is None:
+        strs.sort(key=natural_key)
+    else:
+        strs.sort(key=lambda s: natural_key(key(s)))
+
+def compile_by_docker(src_zip, docker_image, dest_zip):
+    # compile the qd zip file and generate another one by compiling. so that
+    # there is no need to compile it again.
+    src_fname = op.basename(src_zip)
+    src_folder = op.dirname(src_zip)
+
+    docker_src_folder = '/tmpwork'
+    docker_src_zip = op.join(docker_src_folder, src_fname)
+    docker_out_src_fname = src_fname + '.out.zip'
+    docker_out_zip = op.join(docker_src_folder, docker_out_src_fname)
+    out_zip = op.join(src_folder, docker_out_src_fname)
+    docker_compile_folder = '/tmpcompile'
+    cmd = ['docker', 'run',
+            '-v', '{}:{}'.format(src_folder, docker_src_folder),
+            docker_image,
+            ]
+    cmd.append('/bin/bash')
+    cmd.append('-c')
+    compile_cmd = [
+            'mkdir -p {}'.format(docker_compile_folder),
+            'cd {}'.format(docker_compile_folder),
+            'unzip {}'.format(docker_src_zip),
+            'bash compile.aml.sh',
+            'zip -yrv x.zip *',
+            'cp x.zip {}'.format(docker_out_zip),
+            'chmod a+rw {}'.format(docker_out_zip),
+            ]
+    cmd.append(' && '.join(compile_cmd))
+    cmd_run(cmd)
+    ensure_directory(op.dirname(dest_zip))
+    copy_file(out_zip, dest_zip)
+
+def zip_qd(out_zip, options=None):
+    ensure_directory(op.dirname(out_zip))
+    cmd = [
+        'zip',
+        '-uyrv',
+        out_zip,
+        '*',
+    ]
+    if options:
+        cmd.extend(options)
+    else:
+        cmd.extend([
+            '-x',
+            '\*src/CCSCaffe/\*',
+            '-x',
+            '\*src/build/lib.linux-x86_64-2.7/\*',
+            '-x',
+            '\*build/lib.linux-x86_64-2.7/\*',
+            '-x',
+            '\*build/temp.linux-x86_64-2.7/\*',
+            '-x',
+            '\*build/lib.linux-x86_64-3.5/\*',
+            '-x',
+            '\*build/temp.linux-x86_64-3.5/\*',
+            '-x',
+            '\*build/lib.linux-x86_64-3.7/\*',
+            '-x',
+            'assets\*',
+            '-x',
+            '\*build/temp.linux-x86_64-3.7/\*',
+            '-x',
+            '\*build/lib.linux-x86_64-3.6/\*',
+            '-x',
+            '\*build/temp.linux-x86_64-3.6/\*',
+            '-x',
+            '\*src/detectron2/datasets/\*',
+            '-x',
+            '\*src/CCSCaffe/models/\*',
+            '-x',
+            '\*src/CCSCaffe/data/\*',
+            '-x',
+            '\*src/CCSCaffe/examples/\*',
+            '-x',
+            '\*src/detectron2/output\*',
+            '-x',
+            'aux_data/yolo9k/\*',
+            '-x',
+            'visualization\*',
+            '-x',
+            'output\*',
+            '-x',
+            'data\*',
+            '-x',
+            '\*.build_release\*',
+            '-x',
+            '\*.build_debug\*',
+            '-x',
+            '\*.build\*',
+            '-x',
+            '\*tmp_run\*',
+            '-x',
+            '\*src/CCSCaffe/MSVC/\*',
+            '-x',
+            '\*.pyc',
+            '-x',
+            '\*.so',
+            '-x',
+            '\*.o',
+            '-x',
+            '\*src/CCSCaffe/docs/tutorial/\*',
+            '-x',
+            '\*src/CCSCaffe/matlab/\*',
+            '-x',
+            '\*.git\*',
+            '-x',
+            '\*wandb\*',
+        ])
+    cmd_run(cmd, working_dir=os.getcwd(), shell=True)
+
+def get_user_name():
+    import getpass
+    return getpass.getuser()
 
 def init_logging():
     ch = logging.StreamHandler(stream=sys.stdout)
