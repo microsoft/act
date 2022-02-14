@@ -845,25 +845,25 @@ class AMLClient(object):
         logging.info('job id = {}, cmd = \n{}'.format(r.id, cmd))
         return r.id
 
-    #def inject(self, run_id=None):
-        #all_info = self.query(run_id, max_runs=5000)
-        #from qd.db import update_cluster_job_db
+    def inject(self, run_id=None):
+        all_info = self.query(run_id, max_runs=5000)
+        from qd.db import update_cluster_job_db
 
-        #collection_name = self.kwargs.get('inject_collection', 'phillyjob')
-        #failed_jobs = [info for info in all_info if info['status'] == self.status_failed]
-        #failed_job_ids = [info['appID'] for info in failed_jobs]
-        #from qd.db import create_annotation_db
-        #c = create_annotation_db()
-        #appID_to_failed_job = {info['appID']: info for info in failed_jobs}
-        #for job_in_db in c.iter_general(collection_name,
-                #**{'appID': {'$in': failed_job_ids}}):
-            #if job_in_db['status'] == self.status_failed:
-                #del appID_to_failed_job[job_in_db['appID']]
-        #for _, info in appID_to_failed_job.items():
-            #info.update(self.query(info['appID'], with_log=True)[0])
+        collection_name = self.kwargs.get('inject_collection', 'phillyjob')
+        failed_jobs = [info for info in all_info if info['status'] == self.status_failed]
+        failed_job_ids = [info['appID'] for info in failed_jobs]
+        from qd.db import create_annotation_db
+        c = create_annotation_db()
+        appID_to_failed_job = {info['appID']: info for info in failed_jobs}
+        for job_in_db in c.iter_general(collection_name,
+                **{'appID': {'$in': failed_job_ids}}):
+            if job_in_db['status'] == self.status_failed:
+                del appID_to_failed_job[job_in_db['appID']]
+        for _, info in appID_to_failed_job.items():
+            info.update(self.query(info['appID'], with_log=True)[0])
 
-        #update_cluster_job_db(all_info,
-                #collection_name=collection_name)
+        update_cluster_job_db(all_info,
+                collection_name=collection_name)
 
     def sync_code(self, random_id, compile_in_docker=False, clean=True):
         assert random_id == ''
