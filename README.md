@@ -16,8 +16,8 @@ ITP, both of which are Azure Machine Learning services.
 
 2. Setup azcopy
 
-   Following [this link](https://docs.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-v10)
-   to download the azcopy and make sure the azcopy is downloaded to
+   Follow [this link](https://docs.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-v10)
+   to download the azcopy and make sure that azcopy is downloaded to
    ~/code/azcopy/azcopy. That is, you can run the following to check if it is
    good.
    ```shell
