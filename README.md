@@ -214,16 +214,29 @@ ITP, both of which are Azure Machine Learning services.
      list all of them here.
 
 5. How to switch among multiple clusters
-  For each cluster, it is recommended to have different configuration file. For
-  example, we have two clusters: c1 and c2. Then, the two configuration files
-  should be aux_data/aml/c1.yaml and aux_data/aml/c2.yaml. In this case, we can
-  switch different clusters by the option of -c, e.g.
-  ```bash
-  a -c c1 submit ls
-  a -c c2 submit nvidia-smi
-  ```
+   For each cluster, it is recommended to have different configuration file. For
+   example, we have two clusters: c1 and c2. Then, the two configuration files
+   should be aux_data/aml/c1.yaml and aux_data/aml/c2.yaml. In this case, we can
+   switch different clusters by the option of -c, e.g.
+   ```bash
+   a -c c1 submit ls
+   a -c c2 submit nvidia-smi
+   ```
+6. How to use API for parameter searching
+   ```
+    from act.aml_client import create_aml_client
+    c = create_aml_client()
+    job_ids = []
+    for lr in [1e-5, 5e-6]:
+        cmd = ['python', 'train.py', '--lr', lr]
+        _id = c.submit(cmd)
+        job_ids.append(_id)
 
-6. Data management (optional)
+    print(job_ids)
+    for j in job_ids:
+        c.query(j)
+   ```
+7. Data management (optional)
 
    In the config file, we have a mapping of the local folder and the folder in
    the azure blob. Thus, we can upload and download the data based on this
