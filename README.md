@@ -221,7 +221,8 @@ ITP, both of which are Azure Machine Learning services.
 7. How to run some scripts before the code runs.
    
    The tool will also run `compile.aml.sh` if the file exists. Inside the shell
-   script, you can specify any command.
+   script, you can specify any command. Please do not add `sudo` as the script 
+   will always be running with sudo permissions by the tool.
 
 8. How to switch among multiple clusters
 
