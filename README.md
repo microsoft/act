@@ -213,7 +213,18 @@ ITP, both of which are Azure Machine Learning services.
      There might be other variables as well to find the IP, but we will not
      list all of them here.
 
-5. How to switch among multiple clusters
+6. How to install the python packages before the code runs on cluster.
+
+   The tool will install all packages in `requirements.txt` if the file exists
+   in the root folder (the folder where `a init` runs).
+
+7. How to run some scripts before the code runs.
+   
+   The tool will also run `compile.aml.sh` if the file exists. Inside the shell
+   script, you can specify any command.
+
+8. How to switch among multiple clusters
+
    For each cluster, it is recommended to have different configuration file. For
    example, we have two clusters: c1 and c2. Then, the two configuration files
    should be aux_data/aml/c1.yaml and aux_data/aml/c2.yaml. In this case, we can
@@ -222,7 +233,7 @@ ITP, both of which are Azure Machine Learning services.
    a -c c1 submit ls
    a -c c2 submit nvidia-smi
    ```
-6. How to use API for parameter searching
+9. How to use API for parameter searching
    ```
     from act.aml_client import create_aml_client
     c = create_aml_client()
@@ -236,7 +247,7 @@ ITP, both of which are Azure Machine Learning services.
     for j in job_ids:
         c.query(j)
    ```
-7. Data management (optional)
+10. Data management (optional)
 
    In the config file, we have a mapping of the local folder and the folder in
    the azure blob. Thus, we can upload and download the data based on this
