@@ -1434,7 +1434,7 @@ def parse_args():
     parser.add_argument('-no-wl', dest='with_log', action='store_false')
     parser.add_argument('-no-dt', dest='with_details', action='store_false')
     parser.add_argument('-no-lf', dest='log_full', action='store_false')
-    parser.add_argument('-single', dest='multi_process', action='store_false')
+    parser.add_argument('-single', default=argparse.SUPPRESS, dest='multi_process', action='store_false')
     parser.add_argument('-hold', dest='sleep_if_fail', default=False, action='store_true')
     parser.add_argument('-c', '--cluster', default=argparse.SUPPRESS, type=str)
     parser.add_argument('-rt', '--resubmit_to', default=argparse.SUPPRESS, type=str)
