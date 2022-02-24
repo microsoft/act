@@ -43,6 +43,29 @@ def url_to_file_by_curl(url, fname, bytes_start=None, bytes_end=None):
         cmd_run(['curl', '-f', '-r', '{}-{}'.format(bytes_start, bytes_end - 1),
             url, '--output', fname])
 
+def limited_retry_agent(num, func, *args, **kwargs):
+    for i in range(num):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logging.info('fails with \n{}: tried {}-th time'.format(
+                e,
+                i + 1))
+            import time
+            print_trace()
+            if i == num - 1:
+                raise
+            time.sleep(5)
+
+def ensure_remove_dir(d):
+    is_dir = op.isdir(d)
+    is_link = op.islink(d)
+    if is_dir:
+        if not is_link:
+            shutil.rmtree(d)
+        else:
+            os.unlink(d)
+
 def list_to_dict(l, idx, keep_one=False):
     result = OrderedDict()
     for x in l:

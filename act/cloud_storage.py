@@ -145,7 +145,7 @@ def garbage_collection_for_cloud_fuse_loop(local_folders, total_size_limit):
         try:
             garbage_collection_for_cloud_fuse(local_folders, total_size_limit)
         except:
-            from qd.qd_common import print_trace
+            from .common import print_trace
             print_trace()
         time.sleep(10)
 
@@ -228,7 +228,7 @@ class CloudFuse(object):
                 remote_cache_infos = [self.get_remote_cache(f) for f in fnames]
                 remote_cache_infos = [(rd, cd, sn) for rd, cd, sn in remote_cache_infos if not op.isfile(op.join(cd, sn))]
                 remote_cache_infos = [((rd, cd), sn) for rd, cd, sn in remote_cache_infos]
-                from qd.qd_common import list_to_dict
+                from .common import list_to_dict
                 rd_cd_to_sn = list_to_dict(remote_cache_infos, 0)
                 for (rd, cd), sns in rd_cd_to_sn.items():
                     file_list = '/tmp/{}'.format(hash_sha1(pformat(sns)))
@@ -621,7 +621,7 @@ class CloudStorage(object):
                     file_list=None,
                     retry=1,
                     ):
-        from qd.qd_common import limited_retry_agent
+        from .common import limited_retry_agent
         limited_retry_agent(retry, self.az_download_once,
                             remote_path, local_path, sync,
                             is_folder, tmp_first, file_list)
@@ -652,7 +652,7 @@ class CloudStorage(object):
                                       local_path,
                                   ))
                     return
-                from qd.qd_common import ensure_remove_dir
+                from .common import ensure_remove_dir
                 ensure_remove_dir(local_path)
         else:
             if sync:
@@ -845,12 +845,3 @@ class CloudStorage(object):
                 pass
                     #self.download_to_path(f, target_f)
 
-if __name__ == '__main__':
-    from qd.qd_common import init_logging
-    from qd.qd_common import parse_general_args
-    init_logging()
-    kwargs = parse_general_args()
-    logging.info('param:\n{}'.format(pformat(kwargs)))
-    function_name = kwargs['type']
-    del kwargs['type']
-    locals()[function_name](**kwargs)
