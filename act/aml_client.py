@@ -158,7 +158,6 @@ def create_aml_run(experiment, run_id):
         r = matched_runs[0]
     return r
 
-@try_once
 def download_run_logs(run_info, full=True):
     # Do not use r.get_all_logs(), which could be stuck. Use
     # wget instead by calling download_run_logs
@@ -192,11 +191,7 @@ def download_run_logs(run_info, full=True):
                     end_size = None
                 else:
                     end_size = min(url_fsize, start_size + 1024 * 1024 * 10)
-                try:
-                    url_to_file_by_curl(v, extra_target_file, start_size,
-                                        end_size)
-                except:
-                    pass
+                url_to_file_by_curl(v, extra_target_file, start_size, end_size)
                 if op.isfile(extra_target_file):
                     concat_files([target_file, extra_target_file], target_file)
                     try_delete(extra_target_file)
@@ -920,19 +915,28 @@ class AMLClient(object):
         logging.info('path in blob: {}'.format(path_in_blob))
         self.config_param[key]['cloud_blob'].rm_prefix(path_in_blob)
 
-    def upload(self, file_or_folder, from_cluster=None):
+    def upload(self, file_or_folder,
+               from_cluster=None,
+               from_cluster_folder=None,
+               ):
         file_or_folder = clean_prefix(file_or_folder)
         if from_cluster is None:
             self.upload_from_local(file_or_folder)
         else:
-            self.upload_from_another(file_or_folder, from_cluster)
+            self.upload_from_another(file_or_folder, from_cluster,
+                                     from_cluster_folder)
 
-    def upload_from_another(self, file_or_folder, from_cluster):
+    def upload_from_another(self, file_or_folder, from_cluster,
+                            from_cluster_folder=None):
         p = get_root_folder_in_curr_dir(file_or_folder)
         key = '{}_folder'.format(p)
         assert key in self.config_param, self.config_param.keys()
+        if from_cluster_folder is None:
+            from_cluster_folder = file_or_folder
+        from_p = get_root_folder_in_curr_dir(from_cluster_folder)
         self.config_param[key]['cloud_blob'].upload(
-            op.join(from_cluster.config_param[key]['path'], file_or_folder[len(p) + 1:]),
+            op.join(from_cluster.config_param[key]['path'],
+                    from_cluster_folder[len(from_p) + 1:]),
             op.join(self.config_param[key]['path'], file_or_folder[len(p) + 1:]),
             from_blob=from_cluster.config_param[key]['cloud_blob'],
         )

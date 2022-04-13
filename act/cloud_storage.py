@@ -482,7 +482,7 @@ class CloudStorage(object):
         cmd = []
         cmd.append(get_azcopy())
         if from_blob.dir_exists(src_dir) and not self.dir_exists(dest_dir):
-            # in this case, azcopy will copy the local folder under the
+            # in this case, azcopy will copy the local folder to the
             # destination folder, and thus we have to use the folder of
             # dest_dir as the dest_dir.
             assert op.basename(src_dir) == op.basename(dest_dir)
