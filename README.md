@@ -97,6 +97,9 @@ ITP, both of which are Azure Machine Learning services.
    # processes by yourself. It is recommended to set it as true (default)
    multi_process: True
    gpu_per_node: 4
+   # set it as true if you'd like to submit the job as P type, which is
+   # preemptible
+   preemption_allowed: false
    env:
       # the dictionary of env will be as extra environment variables for the
       # job running. you can add multiple env here. Sometimes, the default
