@@ -17,7 +17,11 @@ def load_list_file(fname):
 
 def init_logging():
     import socket
-    logging.basicConfig(level=logging.INFO,
+    if get_mpi_rank() == 0:
+        level = logging.INFO
+    else:
+        level = logging.DEBUG
+    logging.basicConfig(level=level,
         format='%(asctime)s.%(msecs)03d {} %(process)d %(filename)s:%(lineno)s %(funcName)10s(): %(message)s'.format(
             socket.gethostname()),
         datefmt='%m-%d %H:%M:%S',
@@ -189,13 +193,13 @@ def wrap_all(code_zip, code_root,
              compile_args,
              sleep_if_succeed,
              ):
+    cmd_run([sys.executable, 'connectivity_check.py', '13245'])
     cmd_run(['ibstatus'])
     cmd_run(['grep', 'Port', '/etc/ssh/sshd_config'])
     cmd_run(['nvidia-smi'])
     cmd_run(['ifconfig'])
     cmd_run(['df', '-h'])
     cmd_run(['ls', '/dev'])
-    cmd_run([sys.executable, 'connectivity_check.py', '13245'])
 
     lock_fd = acquireLock()
     logging.info('got the lock')
@@ -340,3 +344,4 @@ if __name__ == '__main__':
     init_logging()
     #ensure_ssh_server_running()
     run()
+

@@ -748,7 +748,7 @@ class AMLClient(object):
             env.docker.base_image_registry.username = self.docker['username']
             env.docker.base_image_registry.password = self.docker['password']
         env.docker.shm_size = '1024g'
-        env.python.interpreter_path = '/opt/conda/bin/python'
+        env.python.interpreter_path = self.kwargs.get('interpreter_path', '/opt/conda/bin/python')
         env.python.user_managed_dependencies = True
 
         # the env should be with str. here we just convert it
@@ -1358,6 +1358,7 @@ def execute(task_type, **kwargs):
         for data in kwargs['remainders']:
             infos = c.list(data)
             print_table(infos)
+            logging.info('total = {}'.format(sum(i['size_in_bytes'] for i in infos)))
     elif task_type in ['url']:
         c = create_aml_client(**kwargs)
         for data in kwargs['remainders']:

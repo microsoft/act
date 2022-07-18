@@ -93,7 +93,6 @@ def ensure_init_process_group(
         logging.info('initialized')
 
 
-@try_once
 def test_nccl_gpu_all_gather(port):
     ensure_init_process_group(port=port, backend='nccl')
     for i in range(10):
