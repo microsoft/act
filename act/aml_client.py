@@ -361,7 +361,7 @@ class AMLClient(object):
         self.multi_process = multi_process
         self.platform = platform
         if aks_compute:
-            logging.warnning('please use platform=itp insetead of aks_compute=true')
+            logging.warning('please use platform=itp insetead of aks_compute=true')
             self.platform = 'itp'
         self.singularity_sla_tier = singularity_sla_tier
         self.singularity_instance_type = singularity_instance_type
