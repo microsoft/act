@@ -49,18 +49,12 @@ def destroy_process_group():
 
 
 def get_mpi_local_rank():
-    if 'LOCAL_RANK' in os.environ:
-        return int(os.environ['LOCAL_RANK'])
     return int(os.environ.get('OMPI_COMM_WORLD_LOCAL_RANK', '0'))
 def get_mpi_size():
-    if 'WORLD_SIZE' in os.environ:
-        return int(os.environ['WORLD_SIZE'])
     return int(os.environ.get('OMPI_COMM_WORLD_SIZE', '1'))
 
 
 def get_mpi_rank():
-    if 'RANK' in os.environ:
-        return int(os.environ['RANK'])
     return int(os.environ.get('OMPI_COMM_WORLD_RANK', '0'))
 
 def get_master_node_ip():

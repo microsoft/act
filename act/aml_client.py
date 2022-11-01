@@ -142,20 +142,7 @@ def parse_run_info(run, with_details=True,
 def create_aml_run(experiment, run_id):
     from azureml.core.script_run import ScriptRun
     run_id = run_id.strip().strip('/')
-    try:
-        r = ScriptRun(experiment, run_id)
-    except:
-        all_run = experiment.get_runs()
-        matched_runs = [r for r in all_run if r.id.endswith(run_id)]
-        # sometimes, AML will return two runs with the same ID. it is quite
-        # strange. Here, we deduplicate the runs by the id
-        id_runs = [(r.id, r) for r in matched_runs]
-        from .common import list_to_dict
-        id_to_runs = list_to_dict(id_runs, 0)
-        matched_runs = [runs[0] for _, runs in id_to_runs.items()]
-        assert len(matched_runs) == 1, ', '.join([r.id for r in
-            matched_runs])
-        r = matched_runs[0]
+    r = ScriptRun(experiment, run_id)
     return r
 
 def download_run_logs(run_info, full=True):
@@ -301,6 +288,10 @@ class AMLClient(object):
                  aks_compute_global_dispatch=False,
                  aks_compute_global_dispatch_arg=None,
                  unique_gjd_cluster=False,
+                 singularity_sla_tier='Premium',
+                 singularity_instance_type='AISupercomputer.ND96amr_A100_v4',
+                 process_count_per_node=None,
+                 platform='aml',
                  **kwargs):
         self.kwargs = kwargs
         self.cluster = kwargs.get('cluster', 'aml')
@@ -368,10 +359,16 @@ class AMLClient(object):
         self.use_custom_docker = use_custom_docker
         self._experiment = None
         self.multi_process = multi_process
-        self.aks_compute = aks_compute
+        self.platform = platform
+        if aks_compute:
+            logging.warnning('please use platform=itp insetead of aks_compute=true')
+            self.platform = 'itp'
+        self.singularity_sla_tier = singularity_sla_tier
+        self.singularity_instance_type = singularity_instance_type
         self.sleep_if_fail = sleep_if_fail
         self.sleep_if_succeed = kwargs.get('sleep_if_succeed')
         self.compile_args = compile_args
+        self.process_count_per_node = process_count_per_node
 
         self.preemption_allowed = preemption_allowed
         self.aks_compute_global_dispatch = aks_compute_global_dispatch
@@ -379,8 +376,6 @@ class AMLClient(object):
         self.unique_gjd_cluster = unique_gjd_cluster
 
         self.zip_options = kwargs.get('zip_options')
-
-        self.command_prefix = kwargs.get('command_prefix')
 
     def __repr__(self):
         return self.compute_target_name
@@ -421,7 +416,7 @@ class AMLClient(object):
     @property
     def compute_target(self):
         if self._compute_target is None:
-            if self.aks_compute:
+            if self.platform == 'itp':
                 from azureml.contrib.core.compute.k8scompute import AksCompute
             self._compute_target = self.ws.compute_targets[self.compute_target_name]
         return self._compute_target
@@ -448,7 +443,7 @@ class AMLClient(object):
         return node_list
 
     def ssh(self, run_id):
-        if self.aks_compute:
+        if self.platform == 'itp':
             info = self.query_one(run_id=run_id)
             cmd = info['ssh']
         else:
@@ -699,7 +694,7 @@ class AMLClient(object):
         if self.compile_args:
             script_params['--compile_args'] = self.compile_args
 
-        interpreter_path = '/opt/conda/bin/python'
+        interpreter_path = self.get_python_path_in_server()
         docker_source_directory = '/mnt/source_directory'
 
         cmd_list = [
@@ -722,6 +717,31 @@ class AMLClient(object):
         cmd_list.extend([k for kv in script_params.items() for k in kv])
         cmd_run(cmd_list)
 
+    def get_python_path_in_server(self):
+        return self.kwargs.get('interpreter_path', 'python')
+
+    def construct_env(self):
+        import azureml
+        env = azureml.core.runconfig.EnvironmentDefinition()
+        env.docker.enabled = True
+        env.docker.base_image = self.docker['image']
+        if 'address' in self.docker:
+            env.docker.base_image_registry.address = self.docker['address']
+            if self.platform == 'singularity' and self.docker.get('address'):
+                assert self.docker['image'].startswith(self.docker['address']), (
+                    'for singularity, docker image name must begin with docker address'
+                )
+        if self.docker.get('username'):
+            env.docker.base_image_registry.username = self.docker['username']
+            env.docker.base_image_registry.password = self.docker['password']
+        env.docker.shm_size = '1024g'
+        env.python.interpreter_path = self.get_python_path_in_server()
+        env.python.user_managed_dependencies = True
+
+        # the env should be with str. here we just convert it
+        env.environment_variables.update({k: str(v) for k, v in self.env.items()})
+        return env
+
     def submit(self, cmd, num_gpu=None):
         self.attach_data_store()
         self.attach_mount_point()
@@ -738,21 +758,8 @@ class AMLClient(object):
 
         from azureml.train.estimator import Estimator
         from azureml.train.dnn import PyTorch
-        import azureml
-        env = azureml.core.runconfig.EnvironmentDefinition()
-        env.docker.enabled = True
-        env.docker.base_image = self.docker['image']
-        if 'address' in self.docker:
-            env.docker.base_image_registry.address = self.docker['address']
-        if 'username' in self.docker:
-            env.docker.base_image_registry.username = self.docker['username']
-            env.docker.base_image_registry.password = self.docker['password']
-        env.docker.shm_size = '1024g'
-        env.python.interpreter_path = self.kwargs.get('interpreter_path', '/opt/conda/bin/python')
-        env.python.user_managed_dependencies = True
 
-        # the env should be with str. here we just convert it
-        env.environment_variables.update({k: str(v) for k, v in self.env.items()})
+        env = self.construct_env()
 
         from azureml.core.runconfig import MpiConfiguration
         mpi_config = MpiConfiguration()
@@ -762,19 +769,21 @@ class AMLClient(object):
         # this env is only used by some code with torch.distributed.launch.
         # please do not include these code as the custom code could overwrite
         # it. one example is local_master_launcher.py
-        #env.environment_variables.update({'WORLD_SIZE': num_gpu})
+        if self.multi_process and self.platform == 'singularity':
+            # in singularity, someitmes, world-size is set as 1, which is
+            # incorret.
+            env.environment_variables.update({'WORLD_SIZE': num_gpu})
 
         if num_gpu <= self.gpu_per_node:
-            mpi_config.process_count_per_node = num_gpu
+            mpi_config.process_count_per_node = self.process_count_per_node or num_gpu
             node_count = 0 if num_gpu == 0 else 1
         else:
             assert (num_gpu % self.gpu_per_node) == 0
-            mpi_config.process_count_per_node = self.gpu_per_node
-            node_count = num_gpu // self.gpu_per_node
+            mpi_config.process_count_per_node = self.process_count_per_node or self.gpu_per_node
+            node_count = num_gpu // mpi_config.process_count_per_node
         if not self.multi_process:
             if node_count == 1:
-                # in some clusters, it is not allowed to specify mpi_config,
-                # but ok to set it as None
+                # in some clusters, it is not allowed to specify mpi_config
                 mpi_config = None
             else:
                 mpi_config.process_count_per_node = 1
@@ -786,18 +795,18 @@ class AMLClient(object):
 
         if self.use_custom_docker:
             from azureml.core import ScriptRunConfig
-            estimator10 = ScriptRunConfig(
+            src = ScriptRunConfig(
                 source_directory=self.source_directory,
                 script=self.entry_script,
                 arguments=[x for kv in script_params.items() for x in kv],
-                compute_target=self.compute_target,
+                compute_target=self.compute_target if self.platform != 'singularity' else None,
                 environment=env,
                 distributed_job_config=mpi_config,
             )
-            estimator10.run_config.data_references = dict((v['mount_point'].data_reference_name, v['mount_point'].to_config()) for v in
+            src.run_config.data_references = dict((v['mount_point'].data_reference_name, v['mount_point'].to_config()) for v in
                  self.config_param.values())
         else:
-            estimator10 = PyTorch(
+            src = PyTorch(
                 source_directory=self.source_directory,
                 compute_target=self.compute_target,
                 script_params=script_params,
@@ -806,7 +815,7 @@ class AMLClient(object):
                 node_count=node_count,
                 distributed_training=mpi_config,
             )
-        if self.aks_compute:
+        if self.platform == 'itp':
             from azureml.contrib.core.k8srunconfig import K8sComputeConfiguration
             k8sconfig = K8sComputeConfiguration()
             k8s = dict()
@@ -823,11 +832,11 @@ class AMLClient(object):
 
             k8s['gpu_count'] = num_gpu
             k8sconfig.configuration = k8s
-            estimator10.run_config.cmk8scompute = k8sconfig
+            src.run_config.cmk8scompute = k8sconfig
 
             if self.aks_compute_global_dispatch:
                 from azureml.contrib.core.gjdrunconfig import GlobalJobDispatcherConfiguration
-                estimator10.run_config.global_job_dispatcher = GlobalJobDispatcherConfiguration(
+                src.run_config.global_job_dispatcher = GlobalJobDispatcherConfiguration(
                     compute_type="AmlK8s",
                     **self.aks_compute_global_dispatch_arg
                     # vm_size = ["Standard_ND40rs_v2","Standard_ND40s_v2"],
@@ -835,8 +844,31 @@ class AMLClient(object):
                     # my_resource_only = False,
                     # low_priority_vm_tolerant = True,
                 )
+        if self.platform == 'singularity':
+            #from azureml.core.conda_dependencies import CondaDependencies
+            from azureml.contrib.aisc.aiscrunconfig import AISuperComputerConfiguration
+            #conda = CondaDependencies.create()
+            src.run_config.target = "aisupercomputer"
+            src.run_config.aisupercomputer = AISuperComputerConfiguration()
+            src.run_config.aisupercomputer.instance_type = self.singularity_instance_type # maps to aisc placementPolicies
+            #src.run_config.aisupercomputer.image_version='pytorch'
+            #src.run_config.aisupercomputer.sla_tier = "Standard"|Basic|Premium
+            src.run_config.aisupercomputer.sla_tier = self.singularity_sla_tier
+            src.run_config.node_count = node_count
+            #src.run_config.aisupercomputer.location='eastus'
+            #src.run_config.aisupercomputer.scale_policy.auto_scale_interval_in_sec = 47
+            #src.run_config.aisupercomputer.scale_policy.max_instance_type_count = 2
+            #src.run_config.aisupercomputer.scale_policy.min_instance_type_count = 2
+            #src.run_config.environment.environment_variables['OMPI_COMM_WORLD_SIZE'] = "2"
 
-        r = self.experiment.submit(estimator10)
+            src.run_config.aisupercomputer.virtual_cluster_arm_id = \
+                "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.MachineLearningServices/virtualClusters/{}".format(
+                    self.ws.subscription_id, self.ws.resource_group,
+                    self.compute_target_name,
+                )
+            #src.run_config.environment.python.conda_dependencies = conda
+
+        r = self.experiment.submit(src)
         logging.info('job id = {}, cmd = \n{}'.format(r.id, cmd))
         return r.id
 
@@ -1440,7 +1472,7 @@ def parse_args():
     parser.add_argument('-no-dt', dest='with_details', action='store_false')
     parser.add_argument('-no-lf', dest='log_full', action='store_false')
     parser.add_argument('-single', default=argparse.SUPPRESS, dest='multi_process', action='store_false')
-    parser.add_argument('-hold', dest='sleep_if_fail', default=False, action='store_true')
+    #parser.add_argument('-hold', dest='sleep_if_fail', default=False, action='store_true')
     parser.add_argument('-c', '--cluster', default=argparse.SUPPRESS, type=str)
     parser.add_argument('-rt', '--resubmit_to', default=argparse.SUPPRESS, type=str)
     parser.add_argument('-f', '--from_cluster', default=argparse.SUPPRESS, type=str)

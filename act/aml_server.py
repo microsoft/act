@@ -30,7 +30,7 @@ def init_logging():
 def copy_file(src, dest):
     tmp = dest + '.tmp'
     # we use rsync because it could output the progress
-    cmd_run('rsync {} {} --progress'.format(src, tmp).split(' '))
+    cmd_run('cp {} {}'.format(src, tmp).split(' '))
     os.rename(tmp, dest)
 
 def unzip(zip_file, target_folder):
@@ -189,14 +189,13 @@ def launch_monitoring_process():
 
 def wrap_all(code_zip, code_root,
              folder_link, command,
-             sleep_if_fail,
              compile_args,
-             sleep_if_succeed,
              ):
     cmd_run([sys.executable, 'connectivity_check.py', '13245'])
     cmd_run(['ibstatus'])
     cmd_run(['grep', 'Port', '/etc/ssh/sshd_config'])
     cmd_run(['nvidia-smi'])
+    cmd_run(['rocm-smi'])
     cmd_run(['ifconfig'])
     cmd_run(['df', '-h'])
     cmd_run(['ls', '/dev'])
@@ -216,11 +215,6 @@ def wrap_all(code_zip, code_root,
                      source,
                      op.join(code_root, target)])
 
-        #cmd_run(['chmod', 'a+rw',
-            #output_folder], succeed=False)
-
-        #cmd_run(['ln', '-s', output_folder, op.join(code_root, 'output')])
-
         # compile the source code
         compile_qd(code_root, compile_args)
     releaseLock(lock_fd)
@@ -232,18 +226,10 @@ def wrap_all(code_zip, code_root,
     if type(command) is str:
         command = list(command.split(' '))
 
-    with MonitoringProcess():
-        if len(command) > 0:
-            try:
-                cmd_run(command, working_directory=code_root,
-                        succeed=True)
-            except:
-                if sleep_if_fail:
-                    cmd_run(['sleep', 'infinity'])
-                else:
-                    raise
-            if sleep_if_succeed:
-                cmd_run(['sleep', 'infinity'])
+    #with MonitoringProcess():
+    if len(command) > 0:
+        cmd_run(command, working_directory=code_root,
+                    succeed=True)
 
 def get_mpi_local_size():
     return int(os.environ.get('OMPI_COMM_WORLD_LOCAL_SIZE', '1'))
@@ -331,14 +317,21 @@ def run():
 
     qd_root = op.join('/tmp', 'code', 'act')
 
-    wrap_all(dict_param['code_path'],
-             qd_root,
-             dict_param['folder_link'],
-             dict_param['command'],
-             dict_param['sleep_if_fail'],
-             dict_param['compile_args'],
-             sleep_if_succeed=dict_param['sleep_if_succeed'],
-             )
+    try:
+        wrap_all(dict_param['code_path'],
+                 qd_root,
+                 dict_param['folder_link'],
+                 dict_param['command'],
+                 dict_param['compile_args'],
+                 )
+        if dict_param['sleep_if_succeed']:
+            cmd_run(['sleep', 'infinity'])
+    except:
+        if dict_param['sleep_if_fail']:
+            print_trace()
+            cmd_run(['sleep', 'infinity'])
+        else:
+            raise
 
 if __name__ == '__main__':
     init_logging()
