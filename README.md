@@ -100,6 +100,8 @@ ITP, both of which are Azure Machine Learning services.
    # set it as true if you'd like to submit the job as P type, which is
    # preemptible
    preemption_allowed: false
+   # uncomment the following to specify the python path explicitly
+   # interpreter_path: /opt/conda/bin/python
    env:
       # the dictionary of env will be as extra environment variables for the
       # job running. you can add multiple env here. Sometimes, the default
