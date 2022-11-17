@@ -851,6 +851,7 @@ class AMLClient(object):
             src.run_config.target = "aisupercomputer"
             src.run_config.aisupercomputer = AISuperComputerConfiguration()
             src.run_config.aisupercomputer.instance_type = self.singularity_instance_type # maps to aisc placementPolicies
+            src.run_config.aisupercomputer.priority = 'High' # maps to aisc placementPolicies
             #src.run_config.aisupercomputer.image_version='pytorch'
             #src.run_config.aisupercomputer.sla_tier = "Standard"|Basic|Premium
             src.run_config.aisupercomputer.sla_tier = self.singularity_sla_tier
