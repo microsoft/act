@@ -158,16 +158,17 @@ def download_run_logs(run_info, full=True):
         kvs = list(run_info['logFiles'].items())
     else:
         kvs = [(x['name'], x['url']) for x in run_info['logFiles']]
-    for k, v in kvs:
-        target_file = op.join(log_folder, run_info['appID'], k)
+    def smart_download(x):
+        v, target_file = x
         from .common import url_to_file_by_curl
         try:
             url_fsize = get_url_fsize(v)
+        except (KeyboardInterrupt, SystemExit):
+            raise
         except:
-            all_log_file.append(target_file)
-            continue
+            return
         if url_fsize is None or url_fsize == 0:
-            continue
+            return
         if op.isfile(target_file):
             start_size = get_file_size(target_file)
             if start_size < url_fsize:
@@ -189,9 +190,17 @@ def download_run_logs(run_info, full=True):
                 end_size = min(url_fsize, 1024 * 100)
             try:
                 url_to_file_by_curl(v, target_file, 0, end_size)
+            except (KeyboardInterrupt, SystemExit):
+                raise
             except:
                 pass
-        all_log_file.append(target_file)
+    url_files = []
+    for k, v in kvs:
+        target_file = op.join(log_folder, run_info['appID'], k)
+        url_files.append((v, target_file))
+    from .common import parallel_imap
+    parallel_imap(smart_download, url_files, num_worker=64)
+    all_log_file = [f for _, f in url_files]
 
     log_status = {'status': run_info['status'],
                   'is_full': full}

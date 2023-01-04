@@ -604,4 +604,47 @@ def dict_get_path_value(d, p, with_type=False):
         else:
             return cur_dict
 
+def log_tqdm(*args, **kwargs):
+    desc = kwargs.get('desc', '')
+    import inspect
+    frame = inspect.currentframe()
+    frames = inspect.getouterframes(frame)
+    frame = frames[1].frame
+    line_number = frame.f_lineno
+    fname = op.basename(frame.f_code.co_filename)
+    message = '{}:{}'.format(fname, line_number)
 
+    if 'desc' in kwargs:
+        kwargs['desc'] = message + ' ' + desc
+    else:
+        kwargs['desc'] = message
+
+    if 'mininterval' not in kwargs:
+        # every 2 secons; default is 0.1 second which is too frequent
+        kwargs['mininterval'] = 2
+
+    from tqdm import tqdm
+    return tqdm(*args, **kwargs)
+
+def parallel_imap(func, all_task, num_worker=16):
+    if num_worker > 0:
+        #from multiprocessing import Pool
+        from pathos.multiprocessing import Pool
+        m = Pool(num_worker)
+        result = []
+        for x in log_tqdm(m.imap(func, all_task), total=len(all_task)):
+            result.append(x)
+        # there are some error comes out from os.fork() and which says
+        # OSError: [Errno 24] Too many open files.
+        # self.pid = os.fork()
+        # here, we explicitly close the pool and see if it helps. note, this is
+        # not verified to work, if we still see that kind of error message, we
+        # need other solutions
+        m.close()
+        m.join()
+        return result
+    else:
+        result = []
+        for t in all_task:
+            result.append(func(t))
+        return result

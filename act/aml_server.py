@@ -33,17 +33,49 @@ def copy_file(src, dest):
     cmd_run('cp {} {}'.format(src, tmp).split(' '))
     os.rename(tmp, dest)
 
+def limited_retry_agent(num, func, *args, **kwargs):
+    for i in range(num):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logging.warning('fails with \n{}: tried {}/{}-th time'.format(
+                e,
+                i + 1,
+                num,
+            ))
+            import time
+            print_trace()
+            if i == num - 1:
+                raise
+            import random
+            t = random.random() * 5
+            time.sleep(t)
+
 def unzip(zip_file, target_folder):
     local_zip = '/tmp/code.zip'
+    silent = get_mpi_rank() != 0
     if zip_file.startswith('http'):
-        cmd_run(['rm', '-rf', local_zip])
-        cmd_run(['wget', zip_file, '-O', local_zip])
+        cmd_run(['rm', '-rf', local_zip], succeed=True)
+        limited_retry_agent(
+            10,
+            cmd_run,
+            ['wget', zip_file, '-O', local_zip],
+            succeed=True,
+        )
+        #cmd_run(['wget', zip_file, '-O', local_zip], succeed=True)
     else:
         copy_file(zip_file, local_zip)
-    cmd_run(['unzip', local_zip, '-d', target_folder])
+    cmd_run(['unzip', local_zip, '-d', target_folder],
+            silent=silent,
+            succeed=True,
+            )
 
 def cmd_run(cmd, working_directory='./', succeed=False,
-        return_output=False, stdout=None, stderr=None):
+            return_output=False, stdout=None, stderr=None,
+            silent=False,
+            no_commute=False,
+            timeout=None,
+            ):
     e = os.environ.copy()
     e['PYTHONPATH'] = '/app/caffe/python:{}'.format(e.get('PYTHONPATH', ''))
     # in the maskrcnn, it will download the init model to TORCH_HOME. By
@@ -53,9 +85,10 @@ def cmd_run(cmd, working_directory='./', succeed=False,
     # shared, which is the case in AML.
     e['TORCH_HOME'] = './output/torch_home'
     ensure_directory(e['TORCH_HOME'])
-    logging.info('start to cmd run: {}'.format(' '.join(map(str, cmd))))
-    for c in cmd:
-        logging.info(c)
+    if not silent:
+        logging.info('start to cmd run: {}'.format(' '.join(map(str, cmd))))
+        for c in cmd:
+            logging.info(c)
     if not return_output:
         try:
             p = sp.Popen(
@@ -65,16 +98,24 @@ def cmd_run(cmd, working_directory='./', succeed=False,
                 stdout=stdout,
                 stderr=stderr,
             )
-            p.communicate()
-            if succeed:
-                logging.info('return code = {}'.format(p.returncode))
-                assert p.returncode == 0
+            if not no_commute:
+                p.communicate(timeout=timeout)
+                if succeed:
+                    logging.info('return code = {}'.format(p.returncode))
+                    assert p.returncode == 0
+            return p
         except:
             if succeed:
                 logging.info('raising exception')
                 raise
+            else:
+                print_trace()
     else:
-        return sp.check_output(cmd)
+        return sp.check_output(
+            cmd,
+            cwd=working_directory,
+            timeout=timeout,
+        )
 
 def ensure_directory(path):
     if path == '' or path == '.':
@@ -153,7 +194,12 @@ def parse_gpu_usage_dict(result):
 
 def monitor():
     while True:
-        cmd_result = cmd_run(['nvidia-smi'], return_output=True).decode()
+        try:
+            cmd_result = cmd_run(['nvidia-smi'], return_output=True).decode()
+        except:
+            # if it is amd, we will be here.
+            print_trace()
+            return
         gpu_result = parse_gpu_usage_dict(cmd_result)
         logging.info('{}'.format(gpu_result))
         import shutil
@@ -226,10 +272,10 @@ def wrap_all(code_zip, code_root,
     if type(command) is str:
         command = list(command.split(' '))
 
-    #with MonitoringProcess():
-    if len(command) > 0:
-        cmd_run(command, working_directory=code_root,
-                    succeed=True)
+    with MonitoringProcess():
+        if len(command) > 0:
+            cmd_run(command, working_directory=code_root,
+                        succeed=True)
 
 def get_mpi_local_size():
     return int(os.environ.get('OMPI_COMM_WORLD_LOCAL_SIZE', '1'))

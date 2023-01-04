@@ -57,14 +57,51 @@ def get_mpi_size():
 def get_mpi_rank():
     return int(os.environ.get('OMPI_COMM_WORLD_RANK', '0'))
 
-def get_master_node_ip():
-    if 'AZ_BATCHAI_JOB_MASTER_NODE_IP' in os.environ:
-        return os.environ['AZ_BATCHAI_JOB_MASTER_NODE_IP']
-    elif 'MASTER_IP' in os.environ:
-        return os.environ['MASTER_IP']
-    else:
-        return 'localhost'
+def get_aml_mpi_host_names():
+    return os.environ['AZ_BATCH_HOST_LIST'].split(',')
 
+def get_master_node_ip():
+    ret = None
+    # the env is not always set in the following
+    #if 'SSH_CLIENT' in os.environ:
+        #ret = os.environ['SSH_CLIENT'].split(' ')[0]
+    #elif 'OMPI_MCA_orte_parent_uri' in os.environ:
+        ##OMPI_MCA_orte_local_daemon_uri = 825753600.3;tcp://10.11.34.145:50205
+        #x = os.environ['OMPI_MCA_orte_parent_uri']
+        #idx1 = x.find('tcp://')
+        #x = x[idx1 + len('tcp://'): ]
+        #idx2 = x.find(':')
+        #ret = x[:idx2]
+    #elif 'Fabric_NET-0-[Open]' in os.environ:
+        ## singularity. sometimes, it has DNS issue. This will give ip directly
+        ##SSH_CLIENT = 10.11.53.197 52192 22
+        #ret = os.environ['Fabric_NET-0-[Open]']
+    if 'MASTER_IP' in os.environ:
+        ret = os.environ['MASTER_IP']
+    elif 'AZ_BATCH_HOST_LIST' in os.environ:
+        ret = get_aml_mpi_host_names()[0]
+    elif 'AZ_BATCHAI_JOB_MASTER_NODE_IP' in os.environ:
+        ret = os.environ['AZ_BATCHAI_JOB_MASTER_NODE_IP']
+    else:
+        ret = 'localhost'
+    if ret.count('.') == 3:
+        logging.info('{} is an IP'.format(ret))
+        return ret
+    logging.info('parsing ip of {}'.format(ret))
+    import socket
+    i = 0
+    while True:
+        try:
+            ret = socket.gethostbyname(ret)
+            break
+        except:
+            logging.info('fails: try {}-th time'.format(i))
+            i += 1
+            print_trace()
+            import time
+            time.sleep(5)
+    logging.info('parsed ip as {}'.format(ret))
+    return ret
 
 def ensure_init_process_group(
         device_id=None, port=12345, backend='nccl'):
