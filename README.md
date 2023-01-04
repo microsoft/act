@@ -77,9 +77,10 @@ ITP, both of which are Azure Machine Learning services.
           path: path/to/output # this folder will be as $ROOT/output
    # if False, it will use AML's PyTorch estimator, which is not heavily tested here
    use_custom_docker: true
+   # compute target should be the virtual cluster name if it is singularity
    compute_target: NC24RSV3 
-   # if it is the ITP cluster, please set it as true
-   aks_compute: false
+   # the value of platform can be aml or itp or singularity.
+   platform: singularity
    docker:
        # the custom docker. If use_custom_docker is False, this will be ignored
        image: amsword/setup:py36pt16
