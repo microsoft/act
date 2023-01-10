@@ -424,6 +424,9 @@ class AMLClient(object):
 
     @property
     def compute_target(self):
+        assert self.platform in ['aml', 'itp'], 'Not supported for {}'.format(
+            self.platform
+        )
         if self._compute_target is None:
             if self.platform == 'itp':
                 from azureml.contrib.core.compute.k8scompute import AksCompute
@@ -432,7 +435,7 @@ class AMLClient(object):
 
     def get_cluster_status(self):
         compute_status = get_compute_status(self.compute_target,
-                gpu_per_node=self.gpu_per_node)
+                    gpu_per_node=self.gpu_per_node)
 
         return compute_status
 
@@ -817,7 +820,7 @@ class AMLClient(object):
         else:
             src = PyTorch(
                 source_directory=self.source_directory,
-                compute_target=self.compute_target,
+                compute_target=self.compute_target if self.platform != 'singularity' else None,
                 script_params=script_params,
                 entry_script=self.entry_script,
                 environment_definition=env,
