@@ -168,7 +168,6 @@ ITP, both of which are Azure Machine Learning services.
 3. How to resubmit a job
    ```bash
    a resubmit jianfw_1563257309_60ce2fc7
-   a resubmit 60ce2fc7
    ```
    The resubmit here will first abort the existing job and then submit it.
 
