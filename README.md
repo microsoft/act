@@ -81,6 +81,8 @@ ITP, both of which are Azure Machine Learning services.
    compute_target: NC24RSV3 
    # the value of platform can be aml or itp or singularity.
    platform: singularity
+   # set the instance type if it is singularity. ND40rs_v2 is V100
+   singularity_instance_type: 'AISupercomputer.ND40rs_v2'
    docker:
        # the custom docker. If use_custom_docker is False, this will be ignored
        image: amsword/setup:py36pt16
