@@ -6,8 +6,9 @@ ITP, both of which are Azure Machine Learning services.
 ## Installation
 1. install
    ```bash
-   pip install --upgrade azureml-sdk
-   pip install --upgrade --disable-pip-version-check --extra-index-url https://azuremlsdktestpypi.azureedge.net/K8s-Compute/D58E86006C65 azureml_contrib_k8s
+   pip install azureml-sdk
+   pip install azureml-contrib-aisc
+   pip install --disable-pip-version-check --extra-index-url https://azuremlsdktestpypi.azureedge.net/K8s-Compute/D58E86006C65 azureml_contrib_k8s
    git clone https://github.com/microsoft/act.git
    cd act
    pip install -r requirements.txt
