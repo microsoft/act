@@ -86,7 +86,7 @@ ITP, both of which are Azure Machine Learning services.
    singularity_instance_type: 'AISupercomputer.ND40rs_v2'
    docker:
        # the custom docker. If use_custom_docker is False, this will be ignored
-       image: amsword/setup:py36pt16
+       image: amsword/setup:py38pt112cu11
    # any name to specify the experiment name.
    # better to have alias name as part of the experiment name since experiment
    # cannot be deleted and it is better to use fewer experiments
