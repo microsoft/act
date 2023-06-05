@@ -277,6 +277,53 @@ def clean_prefix(file_or_folder):
         file_or_folder = file_or_folder[1:]
     return file_or_folder
 
+def get_singularity_cluster_status(
+    subscription_id,
+    resource_group,
+    virtual_cluster_name,
+    sla_tier,
+):
+    from azure.identity import (
+      AzureCliCredential,
+      #DeviceCodeCredential,
+      #EnvironmentCredential,
+      #InteractiveBrowserCredential,
+      #SharedTokenCacheCredential,
+      #TokenCachePersistenceOptions,
+    )
+
+    cred = AzureCliCredential()
+    scope = 'https://management.azure.com/.default'
+    token = cred.get_token(scope).token
+    #cred.get_authentication_header = lambda: dict(Authorization=f"Bearer {token.token}")
+    #cred.get_token = lambda *args, **kwargs: token
+    import requests
+    session = requests.Session()
+    response = session.request(
+        'GET',
+        'https://management.azure.com/subscriptions/{}/resourceGroups/{}/providers/Microsoft.MachineLearningServices/virtualclusters/{}?api-version=2021-03-01-preview'.format(
+            subscription_id,
+            resource_group,
+            virtual_cluster_name,
+        ),
+        params=None,
+        json=None,
+        headers={'Authorization': 'Bearer {}'.format(token)},
+        timeout=None,
+        auth=None,
+    )
+    import json
+    res = json.loads(response.content)
+    ret = []
+    for l in list(res['properties']['managed']['quotas'].values())[0]['limits']:
+        if l['slaTier'] == sla_tier:
+            ret.append({
+                'used': l['used'],
+                'limit': l['limit'],
+            })
+    assert len(ret) == 1
+    return ret[0]
+
 class AMLClient(object):
     status_running = 'Running'
     status_queued = 'Queued'
@@ -434,10 +481,21 @@ class AMLClient(object):
         return self._compute_target
 
     def get_cluster_status(self):
-        compute_status = get_compute_status(self.compute_target,
-                    gpu_per_node=self.gpu_per_node)
+        if self.platform == 'singularity':
+            import json
+            aml_config = json.loads(read_to_buffer(self.aml_config))
+            ret = get_singularity_cluster_status(
+                aml_config['subscription_id'],
+                aml_config['resource_group'],
+                self.compute_target_name,
+                self.singularity_sla_tier,
+            )
+            return ret
+        else:
+            compute_status = get_compute_status(self.compute_target,
+                        gpu_per_node=self.gpu_per_node)
 
-        return compute_status
+            return compute_status
 
     @deprecated('use get_cluster_status')
     def get_compute_status(self):
