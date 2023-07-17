@@ -12,7 +12,6 @@ from .common import load_from_yaml_file
 from .common import cmd_run
 from .common import parse_iteration
 import os.path as op
-from azure.storage.blob import BlockBlobService
 from azure.storage.common.storageclient import logger
 import glob
 from pprint import pformat
@@ -316,9 +315,21 @@ class CloudFuse(object):
                 #remote_file, cache_file, max_connections=10)
         releaseLock(lock_fd)
 
+    def cache_to_remote(self, cache_file, remote_file):
+        lock_fd = self.acquireLock()
+        assert op.isfile(cache_file)
+        self.cloud.upload_file(cache_file, remote_file)
+        releaseLock(lock_fd)
+
     def ensure_remote_to_cache(self, remote_file, cache_file):
         if not op.isfile(cache_file):
             self.remote_to_cache(remote_file, cache_file)
+
+def get_storage_package_version():
+    import pkg_resources
+    azure_storage_blob_version = pkg_resources.get_distribution('azure-storage-blob').version
+    # e.g. 2.1.0
+    return azure_storage_blob_version
 
 class CloudStorage(object):
     def __init__(self, config=None):
@@ -332,6 +343,13 @@ class CloudStorage(object):
         self.account_name = account_name
         self.account_key = account_key
         self._block_blob_service = None
+        self._is_new_package = None
+
+    @property
+    def is_new_package(self):
+        if self._is_new_package is None:
+            self._is_new_package = get_storage_package_version().startswith('12.')
+        return self._is_new_package
 
     def __repr__(self):
         return 'CloudStorage(account={}, container={})'.format(
@@ -342,11 +360,28 @@ class CloudStorage(object):
     @property
     def block_blob_service(self):
         if self._block_blob_service is None:
-            self._block_blob_service = BlockBlobService(
-                    account_name=self.account_name,
-                    account_key=self.account_key,
-                    sas_token=self.sas_token)
+            if self.is_new_package:
+                from azure.storage.blob import BlobServiceClient
+                if self.sas_token:
+                    self._block_blob_service = BlobServiceClient(
+                        account_url='https://{}.blob.core.windows.net'.format(self.account_name),
+                        credential=self.sas_token)
+                else:
+                    self._block_blob_service = BlobServiceClient(
+                        account_url='https://{}.blob.core.windows.net/'.format(self.account_name),
+                        credential={'account_name': self.account_name, 'account_key': self.account_key})
+            else:
+                from azure.storage.blob import BlockBlobService
+                self._block_blob_service = BlockBlobService(
+                        account_name=self.account_name,
+                        account_key=self.account_key,
+                        sas_token=self.sas_token)
         return self._block_blob_service
+
+    @property
+    def container_client(self):
+        assert self.is_new_package
+        return self.block_blob_service.get_container_client(self.container_name)
 
     def list_blob_names(self, prefix=None, creation_time_larger_than=None):
         if creation_time_larger_than is not None:
@@ -550,33 +585,33 @@ class CloudStorage(object):
     @deprecated('use upload')
     def az_upload2(self, src_dir, dest_dir, sync=False):
         return self.upload(src_dir, dest_dir)
-        #assert self.sas_token
-        #cmd = []
-        #cmd.append(get_azcopy())
-        #if sync:
-            #cmd.append('sync')
-        #else:
-            #cmd.append('cp')
-        #cmd.append(op.realpath(src_dir))
-        #url = 'https://{}.blob.core.windows.net'.format(self.account_name)
-        #if dest_dir.startswith('/'):
-            #dest_dir = dest_dir[1:]
-        #url = op.join(url, self.container_name, dest_dir)
-        #assert self.sas_token.startswith('?')
-        #data_url = url
-        #url = url + self.sas_token
-        #cmd.append(url)
-        #if op.isdir(src_dir):
-            #cmd.append('--recursive')
-        #cmd_run(cmd)
-        #return data_url, url
 
     def query_info(self, path):
-        p = self.block_blob_service.get_blob_properties(self.container_name, path)
-        result = {
-            'size_in_bytes': p.properties.content_length,
-            'creation_time': p.properties.creation_time,
-        }
+        if not self.is_new_package:
+            try:
+                p = self.block_blob_service.get_blob_properties(self.container_name, path)
+            except:
+                logging.info('{}: {}'.format(self.container_name, path))
+                raise
+            result = {
+                'size_in_bytes': p.properties.content_length,
+                'creation_time': p.properties.creation_time,
+                'name': path,
+            }
+        else:
+            try:
+                blob_client = self.container_client.get_blob_client(path)
+            except:
+                logging.info('{}: {}'.format(self.container_name, path))
+                raise
+            blob_properties = blob_client.get_blob_properties()
+            blob_tier = self.get_access_tier(blob_properties)
+            result = {
+                'size_in_bytes': blob_properties.size,
+                'creation_time': blob_properties.creation_time,
+                'blob_tier': blob_tier,
+                'name': path,
+            }
         return result
 
     def az_download_all(self, remote_path, local_path):
@@ -747,7 +782,10 @@ class CloudStorage(object):
 
     def file_exists(self, path):
         fp = acquireLock('/tmp/{}.lock'.format(hash_sha1(path)))
-        result = self.block_blob_service.exists(self.container_name, path)
+        if self.is_new_package:
+            result = self.container_client.get_blob_client(path).exists()
+        else:
+            result = self.block_blob_service.exists(self.container_name, path)
         releaseLock(fp)
         return result
 
