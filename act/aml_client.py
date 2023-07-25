@@ -352,6 +352,9 @@ class AMLClient(object):
         self.kwargs = kwargs
         self.cluster = kwargs.get('cluster', 'aml')
         self.use_cli_auth = kwargs.get('use_cli_auth', False)
+        if isinstance(aml_config, str):
+            import json
+            aml_config = json.loads(read_to_buffer(aml_config))
         self.aml_config = aml_config
         self.compute_target_name = compute_target
         self.gpu_per_node = gpu_per_node
@@ -455,18 +458,14 @@ class AMLClient(object):
     def ws(self):
         if self._ws is None:
             from azureml.core import Workspace
-            for i in range(5):
-                try:
-                    if self.use_cli_auth:
-                        from azureml.core.authentication import AzureCliAuthentication
-                        cli_auth = AzureCliAuthentication()
-                        self._ws = Workspace.from_config(self.aml_config, auth=cli_auth)
-                    else:
-                        self._ws = Workspace.from_config(self.aml_config)
-                    break
-                except:
-                    if i == 4:
-                        raise
+            from azureml.core.authentication import AzureCliAuthentication
+            cli_auth = AzureCliAuthentication()
+            self._ws = Workspace.get(
+                self.aml_config['workspace_name'],
+                subscription_id=self.aml_config['subscription_id'],
+                resource_group=self.aml_config['resource_group'],
+                auth=cli_auth,
+            )
         return self._ws
 
     @property
@@ -482,8 +481,7 @@ class AMLClient(object):
 
     def get_cluster_status(self):
         if self.platform == 'singularity':
-            import json
-            aml_config = json.loads(read_to_buffer(self.aml_config))
+            aml_config = self.aml_config
             ret = get_singularity_cluster_status(
                 aml_config['subscription_id'],
                 aml_config['resource_group'],
