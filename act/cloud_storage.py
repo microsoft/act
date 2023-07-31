@@ -384,14 +384,8 @@ class CloudStorage(object):
         return self.block_blob_service.get_container_client(self.container_name)
 
     def list_blob_names(self, prefix=None, creation_time_larger_than=None):
-        if creation_time_larger_than is not None:
-            creation_time_larger_than = creation_time_larger_than.timestamp()
-            return (b.name for b in self.block_blob_service.list_blobs(
-                self.container_name,
-                prefix=prefix)
-                    if b.properties.creation_time.timestamp() > creation_time_larger_than)
-        else:
-            return self.block_blob_service.list_blob_names(self.container_name, prefix=prefix)
+        for info in self.iter_blob_info(prefix, creation_time_larger_than):
+            yield info['name']
 
     def rm_prefix(self, prefix):
         all_path = self.list_blob_names(prefix)
@@ -402,18 +396,44 @@ class CloudStorage(object):
     def rm(self, path):
         self.block_blob_service.delete_blob(self.container_name, path)
 
-    def iter_blob_info(self, prefix=None, creation_time_larger_than=None):
-        def valid(b):
-            c1 = creation_time_larger_than is None or b.properties.creation_time.timestamp() > creation_time_larger_than.timestamp()
-            c2 = b.name.startswith(prefix)
-            return c1 and c2
-        for b in self.block_blob_service.list_blobs(self.container_name, prefix=prefix):
-            if valid(b):
-                yield {
-                    'name': b.name,
-                    'size_in_bytes': b.properties.content_length,
-                    'creation_time': b.properties.creation_time,
-                }
+    def iter_blob_info(self, prefix=None,
+                       creation_time_larger_than=None,
+                       deleted=False,
+                       ):
+        if not self.is_new_package:
+            def valid(b):
+                c1 = creation_time_larger_than is None or b.properties.creation_time.timestamp() > creation_time_larger_than.timestamp()
+                c2 = b.name.startswith(prefix) if prefix else True
+                return c1 and c2 and (not deleted or b.deleted)
+            for b in self.block_blob_service.list_blobs(
+                self.container_name,
+                prefix=prefix,
+                include='deleted' if deleted else None,
+            ):
+                if valid(b):
+                    yield {
+                        'name': b.name,
+                        'size_in_bytes': b.properties.content_length,
+                        'creation_time': b.properties.creation_time,
+                        'last_modified': b.properties.last_modified,
+                    }
+        else:
+            def valid(b):
+                c1 = creation_time_larger_than is None or b.creation_time.timestamp() > creation_time_larger_than.timestamp()
+                c2 = b.name.startswith(prefix) if prefix else True
+                return c1 and c2 and (not deleted or b.deleted)
+            for b in self.container_client.list_blobs(
+                name_starts_with=prefix,
+                include='deleted' if deleted else None,
+            ):
+                if valid(b):
+                    yield {
+                        'name': b.name,
+                        'size_in_bytes': b.size,
+                        'creation_time': b.creation_time,
+                        'last_modified': b.last_modified,
+                        'blob_tier': self.get_access_tier(b)
+                    }
 
     def list_blob_info(self, prefix=None, creation_time_larger_than=None):
         return list(self.iter_blob_info(prefix, creation_time_larger_than))
